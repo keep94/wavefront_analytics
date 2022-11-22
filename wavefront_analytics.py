@@ -6,6 +6,17 @@ from wavefront_api_client.rest import ApiException
 
 
 def run_queries(properties, wql_by_metric, log):
+
+    # Needed so that returned generator remains unaffected if caller
+    # later changes the wql_by_metric dictionary.
+    return _run_queries(properties, dict(wql_by_metric), log)
+
+
+def columns():
+    return 'customer', 'cluster', 'ts', 'metric', 'value'
+
+
+def _run_queries(properties, wql_by_metric, log):
     end_time = (int(time.time()) // 3600) * 3600
     if 'start-time' in properties:
         start_time = _parse_time(properties['start-time'])
@@ -24,17 +35,20 @@ def run_queries(properties, wql_by_metric, log):
     properties['start-time'] = _format_time(end_time)
 
 
-def columns():
-    return 'customer', 'cluster', 'ts', 'metric', 'value'
-
-
 def _format_time(ts):
+
+    # Make sure returned calendar time is in GMT.
     timeval=datetime.datetime.fromtimestamp(ts, datetime.timezone.utc)
     return timeval.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _parse_time(s):
     dt = datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ")
+
+    # dt isn't timeszone aware even though s ends in a Z. We have to assign
+    # it the GMT timezone so that the seconds since epoch calculation works
+    # correctly. Otherwise python does the seconds since epoch calculation as
+    # if dt is in the local time zone.
     return int(dt.replace(tzinfo=datetime.timezone.utc).timestamp())
 
 
@@ -64,7 +78,7 @@ def _wf_query(configuration, metric, wql, log, start_time, end_time):
         # Perform a charting query against Wavefront servers that returns the appropriate points in the specified time window and granularity
         api_response = api_instance.query_api(q, s, g, e=e, i=i, auto_events=auto_events, strict=strict, include_obsolete_metrics=include_obsolete_metrics, sorted=sorted, cached=cached)
         if getattr(api_response, "timeseries", None) is None:
-            log.warning(f'{metric}: Metrics not found. {api_response.warnings}')
+            log.warning(f'{metric}: Metrics not found. {api_response.error_message or api_response.warnings}')
             return []
         for series in api_response.timeseries:
             if getattr(series, 'tags', None) is None:
