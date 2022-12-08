@@ -17,7 +17,10 @@ def columns():
 
 
 def _run_queries(properties, wql_by_metric, log):
+
+    # truncate time to start of current hour
     end_time = (int(time.time()) // 3600) * 3600
+
     if 'start-time' in properties:
         start_time = _parse_time(properties['start-time'])
         if start_time < end_time:
